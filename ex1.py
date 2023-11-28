@@ -1,78 +1,81 @@
 import numpy as np
 import cv2
+import os
 import tensorflow as tf
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D
+from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, BatchNormalization
+from tensorflow.keras.preprocessing.image import img_to_array, load_img
 
-# Synthetic Data Creation
-def create_circle_image(diameter, canvas_size=(64, 64)):
-    canvas = np.zeros(canvas_size, dtype=np.uint8)
-    center = (canvas_size[0] // 2, canvas_size[1] // 2)
-    cv2.circle(canvas, center, diameter // 2, (255, 255, 255), -1)
-    return canvas
+# Constants
+IMG_HEIGHT, IMG_WIDTH = 64, 64
 
-def create_triangle_image(side_length, canvas_size=(64, 64)):
-    canvas = np.zeros(canvas_size, dtype=np.uint8)
-    pt1 = (canvas_size[0] // 2, canvas_size[1] // 2 - side_length // 2)
-    pt2 = (pt1[0] - side_length // 2, pt1[1] + side_length // 2)
-    pt3 = (pt1[0] + side_length // 2, pt1[1] + side_length // 2)
-    triangle_cnt = np.array([pt1, pt2, pt3])
-    cv2.drawContours(canvas, [triangle_cnt], 0, (255, 255, 255), -1)
-    return canvas
+# Function to load images from a directory
+def load_images_from_folder(folder):
+    images = []
+    for filename in os.listdir(folder):
+        img_path = os.path.join(folder, filename)
+        if img_path.endswith(".png") or img_path.endswith(".jpg"):
+            img = load_img(img_path, color_mode='grayscale', target_size=(IMG_HEIGHT, IMG_WIDTH))
+            img = img_to_array(img)
+            images.append(img)
+    return np.array(images)
 
-normal_images = [create_circle_image(20) for _ in range(100)]
-anomalous_images = [create_triangle_image(30) for _ in range(10)]
+# Load training and test data
+train_images = load_images_from_folder('data\\train')
+test_images = load_images_from_folder('data\\test')
 
-normal_images = np.array(normal_images)
-anomalous_images = np.array(anomalous_images)
+# Preprocess the images
+train_images = train_images.astype('float32') / 255.
+test_images = test_images.astype('float32') / 255.
+train_images = np.reshape(train_images, (len(train_images), IMG_HEIGHT, IMG_WIDTH, 1))
+test_images = np.reshape(test_images, (len(test_images), IMG_HEIGHT, IMG_WIDTH, 1))
 
-# Model Design
-def build_autoencoder(input_shape):
+# Advanced Model Design
+def build_advanced_autoencoder(input_shape):
     input_img = Input(shape=input_shape)
-    x = Conv2D(16, (3, 3), activation='relu', padding='same')(input_img)
+    x = Conv2D(32, (3, 3), activation='relu', padding='same')(input_img)
+    x = BatchNormalization()(x)
+    x = MaxPooling2D((2, 2), padding='same')(x)
+    x = Conv2D(16, (3, 3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
     x = MaxPooling2D((2, 2), padding='same')(x)
     x = Conv2D(8, (3, 3), activation='relu', padding='same')(x)
-    x = MaxPooling2D((2, 2), padding='same')(x)
-    x = Conv2D(8, (3, 3), activation='relu', padding='same')(x)
+    encoded = BatchNormalization()(x)
+    x = Conv2D(8, (3, 3), activation='relu', padding='same')(encoded)
     x = UpSampling2D((2, 2))(x)
     x = Conv2D(16, (3, 3), activation='relu', padding='same')(x)
     x = UpSampling2D((2, 2))(x)
+    x = Conv2D(32, (3, 3), activation='relu', padding='same')(x)
     decoded = Conv2D(1, (3, 3), activation='sigmoid', padding='same')(x)
     autoencoder = Model(input_img, decoded)
     autoencoder.compile(optimizer='adam', loss='binary_crossentropy')
     return autoencoder
 
-autoencoder = build_autoencoder((64, 64, 1))
-
-# Data Preprocessing
-normal_images = normal_images.astype('float32') / 255.
-anomalous_images = anomalous_images.astype('float32') / 255.
-normal_images = np.reshape(normal_images, (len(normal_images), 64, 64, 1))
-anomalous_images = np.reshape(anomalous_images, (len(anomalous_images), 64, 64, 1))
+autoencoder = build_advanced_autoencoder((IMG_HEIGHT, IMG_WIDTH, 1))
 
 # Model Training
-autoencoder.fit(normal_images, normal_images, epochs=50, batch_size=128, shuffle=True)
+autoencoder.fit(train_images, train_images, epochs=50, batch_size=128, shuffle=True)
 
-# Anomaly Detection
+# Anomaly Detection Function
 def compute_reconstruction_error(data, model):
     reconstructions = model.predict(data)
     reconstruction_errors = tf.keras.losses.mse(reconstructions, data)
-    return reconstruction_errors.numpy()
+    mean_errors = np.mean(reconstruction_errors, axis=(1, 2))
+    return mean_errors
 
-normal_errors = compute_reconstruction_error(normal_images, autoencoder)
-anomaly_errors = compute_reconstruction_error(anomalous_images, autoencoder)
+# Compute reconstruction error for test images
+test_errors = compute_reconstruction_error(test_images, autoencoder)
 
-threshold = np.mean(normal_errors) + 2 * np.std(normal_errors)
+# Determine threshold based on training data
+threshold = np.mean(test_errors) + 1 * np.std(test_errors)
 
+# Classify test images based on reconstruction error
 def classify_errors(errors, threshold):
     return ["anomaly" if error > threshold else "normal" for error in errors]
 
-classified_normal = classify_errors(normal_errors, threshold)
-classified_anomalies = classify_errors(anomaly_errors, threshold)
+classified_test = classify_errors(test_errors, threshold)
 
 # Display Results
 print("Threshold: ", threshold)
-print("Normal Errors: ", normal_errors)
-print("Anomaly Errors: ", anomaly_errors)
-print("Classified Normal: ", classified_normal)
-print("Classified Anomalies: ", classified_anomalies)
+print("Test Errors: ", test_errors)
+print("Classified Test Images: ", classified_test)
