@@ -1,6 +1,7 @@
 import os
 import shutil
 import random
+https://drive.google.com/drive/u/1/folders/1LIBrF7P3UirrPUj6ZhIlfbXxv4Iq4oib
 
 def pick_and_copy_images(src_folder, dest_folder, percentage=0.2):
     # Ensure the destination folder exists
