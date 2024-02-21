@@ -1,48 +1,51 @@
 {"username":"mahaboobandbasha","key":"f9a1a6c863f923aab4559f695aabeafb"}
 https://drive.google.com/file/d/1qsGJvEEpH0dYU6u1KkIADP5si16upneF/view?usp=sharing
-from ultralytics import YOLO
+import torch
+import torch.nn.functional as F
 
-# Load a model
-#model = YOLO('yolov8.yaml')  # build a new model from YAML
-model = YOLO('yolov8n-obb.pt')  # load a pretrained model (recommended for training)
-#model = YOLO('yolov8.yaml').load('yolov8n.pt')  # build from YAML and transfer weights
+def binary_cross_entropy_with_logits(input, target, weight=None, reduction='mean'):
+    """
+    Args:
+        input (Tensor): The input tensor containing the logits.
+        target (Tensor): The target tensor containing labels (0 or 1).
+        weight (Tensor, optional): A manual rescaling weight given to the loss of each batch element.
+        reduction (str, optional): Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
 
-# Train the model
-results = model.train(data='/content/drive/MyDrive/ML_classes/project_folder/YOLO_DOTA/DOTA_YOLO1/data1.yaml',epochs=5, imgsz=640, batch=8) #, patience=10)
+    Returns:
+        Tensor: The calculated loss.
+    """
+    if not (target.size() == input.size()):
+        raise ValueError("Target size ({}) must be the same as input size ({})".format(target.size(), input.size()))
 
-# Ultralytics YOLO 🚀, AGPL-3.0 license
-# DOTA 2.0 dataset https://captain-whu.github.io/DOTA/index.html for object detection in aerial images by Wuhan University
-# Example usage: yolo train model=yolov8n-obb.pt data=DOTAv2.yaml
-# parent
-# ├── ultralytics
-# └── datasets
-#     └── dota2  ← downloads here (2GB)
+    max_val = (-input).clamp(min=0)
+    loss = input - input * target + max_val + ((-max_val).exp() + (-input - max_val).exp()).log()
 
-# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
-path: /content/drive/MyDrive/ML_classes/project_folder/YOLO_DOTA/DOTA_large_500  # dataset root dir
-train: /content/drive/MyDrive/ML_classes/project_folder/YOLO_DOTA/DOTA_large_500/images/test # train images (relative to 'path') 1411 images
-val: /content/drive/MyDrive/ML_classes/project_folder/YOLO_DOTA/DOTA_large_500/images/val  # val images (relative to 'path') 458 images
-test: /content/drive/MyDrive/ML_classes/project_folder/YOLO_DOTA/DOTA_large_500/images/test # test images (optional) 937 images
+    if weight is not None:
+        loss = loss * weight
 
-# Classes for DOTA 2.0
-names:
-  0: plane
-  1: ship
-  2: storage tank
-  3: baseball diamond
-  4: tennis court
-  5: basketball court
-  6: ground track field
-  7: harbor
-  8: bridge
-  9: large vehicle
-  10: small vehicle
-  11: helicopter
-  12: roundabout
-  13: soccer ball field
-  14: swimming pool
-  15: container crane
-  16: airport
-  17: helipad
-# Download script/URL (optional)
-#download: https://github.com/ultralytics/yolov5/releases/download/v1.0/DOTAv2.zip
+    if reduction == 'none':
+        return loss
+    elif reduction == 'sum':
+        return loss.sum()
+    elif reduction == 'mean':
+        return loss.mean()
+    else:
+        raise ValueError("Invalid value for reduction: {}".format(reduction))
+
+# Example usage
+logits = torch.randn(5, requires_grad=True)
+targets = torch.empty(5).random_(2)
+logits = torch.load('pred_scores5.pt')
+targets = torch.load('target_scores5.pt')
+loss = binary_cross_entropy_with_logits(logits, targets, reduction='sum') / max(targets.sum(), 1)
+
+print(loss)
+
+'''
+7.1248
+7.0986
+6.9362
+7.08
+6.91
+6.401
+'''
