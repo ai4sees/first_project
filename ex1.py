@@ -2,6 +2,23 @@ import os
 import shutil
 import random
 
+import os
+
+def list_files(startpath):
+    for root, dirs, files in os.walk(startpath):
+        level = root.replace(startpath, '').count(os.sep)
+        indent = ' ' * 4 * (level)
+        print(f'{indent}{os.path.basename(root)}/')
+        subindent = ' ' * 4 * (level + 1)
+        for f in files:
+            print(f'{subindent}{f}')
+
+# Define the path
+path = "/sss/projects/folders/"
+
+# List all files in a structured format
+list_files(path)
+
 def pick_and_copy_images(src_folder, dest_folder, percentage=0.2):
     # Ensure the destination folder exists
     if not os.path.exists(dest_folder):
